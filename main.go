@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -206,8 +208,10 @@ func (m model) View() string {
 }
 
 func main() {
+	godotenv.Load()
+
 	gh := NewGithub(GitHubOptions{
-		APIKey:   "",
+		APIKey:   os.Getenv("GITHUB_ACCESS_TOKEN"),
 		Username: "RafaZeero",
 	})
 
