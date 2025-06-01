@@ -152,12 +152,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+			} else if m.paginator.Page > 0 {
+				// Vai para a última opção da página anterior
+				m.paginator.PrevPage()
+				m.cursor = m.paginator.PerPage - 1
 			}
 
 		// The "down" and "j" keys move the cursor down
 		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
+			if m.cursor < m.paginator.PerPage-1 && (m.cursor+m.paginator.Page*m.paginator.PerPage) < len(m.choices)-1 {
 				m.cursor++
+			} else if m.paginator.Page < m.paginator.TotalPages-1 {
+				// Vai para a primeira opção da próxima página
+				m.paginator.NextPage()
+				m.cursor = 0
+			}
+
+		case "left", "h": // Voltar página
+			if m.paginator.Page > 0 {
+				m.paginator.PrevPage()
+			}
+
+		case "right", "l": // Avançar página
+			if m.paginator.Page < m.paginator.TotalPages-1 {
+				m.paginator.NextPage()
 			}
 
 		// The "enter" key and the spacebar (a literal space) toggle
@@ -181,8 +199,11 @@ func (m model) View() string {
 	// The header
 	s := "What repos should we choose?\n\n"
 
+	start, end := m.paginator.GetSliceBounds(len(m.choices))
+	pageChoices := m.choices[start:end]
+
 	// Iterate over our choices
-	for i, choice := range m.choices {
+	for i, choice := range pageChoices {
 
 		// Is the cursor pointing at this choice?
 		cursor := " " // no cursor
@@ -199,6 +220,8 @@ func (m model) View() string {
 		// Render the row
 		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
 	}
+
+	s += m.paginator.View()
 
 	// The footer
 	s += "\nPress q to quit.\n"
@@ -227,10 +250,10 @@ func main() {
 		selected:  make(map[int]struct{}),
 		paginator: p,
 	}
+
 	t := tea.NewProgram(m)
 	if _, err := t.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-
 }
