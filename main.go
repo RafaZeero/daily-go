@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -123,11 +124,31 @@ func (gh *GitHub) GetReposChoices() []string {
 	return choices
 }
 
+type repoSelectionMsg struct {
+	repos []string
+	err   error
+}
+
+func SelectedRepos(repos []string) tea.Cmd {
+	return func() tea.Msg {
+		return repoSelectionMsg{repos: repos}
+	}
+}
+
+type Action int
+
+const (
+	ACTION__SHOW_ALL_REPOS Action = iota
+	ACTION__SHOW_SELECTED_REPOS
+)
+
 type model struct {
-	choices   []string         // items on the to-do list
-	cursor    int              // which to-do list item our cursor is pointing at
-	selected  map[int]struct{} // which to-do items are selected
-	paginator paginator.Model
+	choices      []string         // items on the to-do list
+	cursor       int              // which to-do list item our cursor is pointing at
+	selected     map[int]struct{} // which to-do items are selected
+	paginator    paginator.Model
+	repoSelected []string
+	action       Action
 }
 
 func (m model) Init() tea.Cmd {
@@ -140,7 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Is it a key press?
 	case tea.KeyMsg:
-
+		m.action = ACTION__SHOW_ALL_REPOS
 		// Cool, what was the actual key pressed?
 		switch msg.String() {
 
@@ -180,14 +201,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
-		case "enter", " ":
-			_, ok := m.selected[m.cursor]
+		case " ":
+			offset := m.paginator.Page * m.paginator.PerPage
+			_, ok := m.selected[offset+m.cursor]
 			if ok {
-				delete(m.selected, m.cursor)
+				delete(m.selected, offset+m.cursor)
 			} else {
-				m.selected[m.cursor] = struct{}{}
+				m.selected[offset+m.cursor] = struct{}{}
 			}
+
+		case "enter":
+			selected := []string{}
+
+			for s := range m.selected {
+				selected = append(selected, m.choices[s])
+				// fmt.Println(m.choices[s])
+			}
+			return m, SelectedRepos(selected)
+
 		}
+
+	case repoSelectionMsg:
+		m.action = ACTION__SHOW_SELECTED_REPOS
+		m.repoSelected = msg.repos // []str
+		// m.repoSelected = msg.name // str
 	}
 
 	// Return the updated model to the Bubble Tea runtime for processing.
@@ -197,37 +234,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	// The header
-	s := "What repos should we choose?\n\n"
+	var viewText strings.Builder
+	viewText.WriteString("What repos should we choose?\n\n")
 
 	start, end := m.paginator.GetSliceBounds(len(m.choices))
 	pageChoices := m.choices[start:end]
 
-	// Iterate over our choices
-	for i, choice := range pageChoices {
+	switch m.action {
 
-		// Is the cursor pointing at this choice?
-		cursor := " " // no cursor
-		if m.cursor == i {
-			cursor = ">" // cursor!
+	case ACTION__SHOW_ALL_REPOS:
+		// Iterate over our choices
+		for i, choice := range pageChoices {
+			// Is the cursor pointing at this choice?
+			cursor := " " // no cursor
+			if m.cursor == i {
+				cursor = ">" // cursor!
+			}
+
+			// Is this choice selected?
+			checked := " " // not selected
+			offset := m.paginator.Page * m.paginator.PerPage
+			if _, ok := m.selected[offset+i]; ok {
+				checked = "x" // selected!
+			}
+
+			// Render the row
+			viewText.WriteString(fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice))
 		}
 
-		// Is this choice selected?
-		checked := " " // not selected
-		if _, ok := m.selected[i]; ok {
-			checked = "x" // selected!
-		}
+		viewText.WriteString(m.paginator.View())
 
-		// Render the row
-		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
+		// The footer
+		viewText.WriteString("\nPress q to quit.\n")
+
+		// Send the UI for rendering
+		return viewText.String()
+	case ACTION__SHOW_SELECTED_REPOS:
+		var selectedText strings.Builder
+		selectedText.WriteString("Selected: \n\n")
+		for _, repo := range m.repoSelected {
+			selectedText.WriteString(repo + "\n")
+		}
+		selectedText.WriteString("\nPress enter to continue or q to quit.\n")
+		return selectedText.String()
 	}
 
-	s += m.paginator.View()
-
-	// The footer
-	s += "\nPress q to quit.\n"
-
-	// Send the UI for rendering
-	return s
+	return ""
 }
 
 func main() {
