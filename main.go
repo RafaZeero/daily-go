@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
-	// "github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -184,28 +184,28 @@ func main() {
 		Username: "RafaZeero",
 	})
 
-	gh.LoadReposFromUser()
+	// gh.LoadReposFromUser()
+	//
+	// for _, r := range gh.GetRepos() {
+	// 	fmt.Println(r)
+	// }
 
-	for _, r := range gh.GetRepos() {
-		fmt.Println(r)
+	p := paginator.New()
+	p.Type = paginator.Dots
+	p.PerPage = 10
+	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
+	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
+	p.SetTotalPages(len(gh.GetReposChoices()))
+
+	m := model{
+		choices:   gh.GetReposChoices(),
+		selected:  make(map[int]struct{}),
+		paginator: p,
 	}
 
-	// p := paginator.New()
-	// p.Type = paginator.Dots
-	// p.PerPage = 10
-	// p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
-	// p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
-	// p.SetTotalPages(len(gh.GetReposChoices()))
-	//
-	// m := model{
-	// 	choices:   gh.GetReposChoices(),
-	// 	selected:  make(map[int]struct{}),
-	// 	paginator: p,
-	// }
-	//
-	// t := tea.NewProgram(m)
-	// if _, err := t.Run(); err != nil {
-	// 	fmt.Printf("Alas, there's been an error: %v", err)
-	// 	os.Exit(1)
-	// }
+	t := tea.NewProgram(m)
+	if _, err := t.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
 }

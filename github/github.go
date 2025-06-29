@@ -80,7 +80,7 @@ func (gh *GitHub) LoadReposFromUser() {
 	perPage := 100 // GitHub API max per page
 
 	for {
-		url := fmt.Sprintf("%s/users/%s/repos?page=%d&per_page=%d", githubAPIBaseURL, gh.user.username, page, perPage)
+		url := fmt.Sprintf("%s/user/repos?page=%d&per_page=%d", githubAPIBaseURL, page, perPage)
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
