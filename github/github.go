@@ -75,51 +75,66 @@ func NewGithub(opts GitHubOptions) *GitHub {
 
 // @TODO: Validate errors
 func (gh *GitHub) LoadReposFromUser() {
-	url := fmt.Sprintf("%s/users/%s/repos", githubAPIBaseURL, gh.user.username)
+	allRepos := []Repo{}
+	page := 1
+	perPage := 100 // GitHub API max per page
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal("failed to create request")
-		return
-	}
+	for {
+		url := fmt.Sprintf("%s/users/%s/repos?page=%d&per_page=%d", githubAPIBaseURL, gh.user.username, page, perPage)
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", gh.user.apiKey))
-	req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Add("Accept", "application/vnd.github+json")
-
-	client := http.Client{Timeout: 15 * time.Second}
-
-	res, err := client.Do(req)
-	if err != nil {
-		log.Fatal("failed to do request")
-		return
-	}
-
-	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Fatal("failed to read data")
-		return
-	}
-
-	var repos []Repo
-	if err := json.Unmarshal(body, &repos); err != nil {
-		log.Fatal("failed to unmarshal data")
-		return
-	}
-
-	filteredRepos := []Repo{}
-
-	for _, repo := range repos {
-		owner := strings.Split(repo.FullName, "/")[0]
-		if owner != gh.user.username {
-			continue
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			log.Fatal("failed to create request")
+			return
 		}
 
-		filteredRepos = append(filteredRepos, repo)
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", gh.user.apiKey))
+		req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
+		req.Header.Add("Accept", "application/vnd.github+json")
+
+		client := http.Client{Timeout: 15 * time.Second}
+
+		res, err := client.Do(req)
+		if err != nil {
+			log.Fatal("failed to do request")
+			return
+		}
+
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			log.Fatal("failed to read data")
+			return
+		}
+
+		var repos []Repo
+		if err := json.Unmarshal(body, &repos); err != nil {
+			log.Fatal("failed to unmarshal data")
+			return
+		}
+
+		// If no repos returned, we've reached the end
+		if len(repos) == 0 {
+			break
+		}
+
+		// Filter repos to only include those owned by the user
+		for _, repo := range repos {
+			owner := strings.Split(repo.FullName, "/")[0]
+			if owner == gh.user.username {
+				allRepos = append(allRepos, repo)
+			}
+		}
+
+		// If we got fewer repos than per_page, we've reached the end
+		if len(repos) < perPage {
+			break
+		}
+
+		page++
 	}
 
-	gh.repos = filteredRepos
+	gh.repos = allRepos
 }
 
 func (gh *GitHub) GetRepos() []Repo {
