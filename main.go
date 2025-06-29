@@ -109,6 +109,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, SelectedRepos(selected)
 			}
 
+		case "backspace":
+			if m.action == ACTION__SHOW_SELECTED_REPOS {
+				m.action = ACTION__SHOW_ALL_REPOS
+				m.repoSelected = []string{}
+				m.selected = make(map[int]struct{})
+				m.paginator.SetTotalPages(len(m.choices))
+				m.cursor = 0
+				m.paginator.Page = 0
+				m.paginator.PerPage = 10
+				return m, nil
+			}
+
 		// The "up" and "k" keys move the cursor up
 		case "up", "k":
 			if m.cursor > 0 {
@@ -214,7 +226,7 @@ func (m model) View() string {
 		for _, repo := range m.repoSelected {
 			selectedText.WriteString(repo + "\n")
 		}
-		selectedText.WriteString("\nPress enter to continue or q to quit.\n")
+		selectedText.WriteString("\nPress enter to continue, backspace to go back or q to quit.\n")
 		return selectedText.String()
 
 	case ACTION__SHOW_COMMITS:
@@ -242,13 +254,13 @@ func (m model) View() string {
 			dayRange = "Saturday"
 		}
 
-		commitsText.WriteString(fmt.Sprintf("Commits for %s (%s):\n\n", m.repoName, dayRange))
+		commitsText.WriteString(fmt.Sprintf("Commits for %s (%s) - All branches:\n\n", m.repoName, dayRange))
 
 		if len(m.commits) == 0 {
 			commitsText.WriteString("No commits found for the specified day(s).\n")
 		} else {
 			for i, commit := range m.commits {
-				if i >= 20 { // Limit to first 20 commits for display
+				if i >= 10 { // Limit to first 20 commits for display
 					commitsText.WriteString(fmt.Sprintf("... and %d more commits\n", len(m.commits)-20))
 					break
 				}

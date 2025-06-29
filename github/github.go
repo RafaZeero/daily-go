@@ -56,6 +56,12 @@ type User struct {
 	URL       string `json:"url"`
 }
 
+type Branch struct {
+	Name      string `json:"name"`
+	Commit    Commit `json:"commit"`
+	Protected bool   `json:"protected"`
+}
+
 func (r Repo) String() string {
 	visibility := "public"
 	if r.Private {
@@ -193,6 +199,10 @@ func (gh *GitHub) GetCommitsForRepo(repoName string) ([]Commit, error) {
 }
 
 func (gh *GitHub) GetCommitsForRepoSince(repoName string, since time.Time) ([]Commit, error) {
+	return gh.GetCommitsForRepoSinceFromBranch(repoName, since, "")
+}
+
+func (gh *GitHub) GetCommitsForRepoSinceFromBranch(repoName string, since time.Time, branchName string) ([]Commit, error) {
 	// Find the repo by name
 	var targetRepo *Repo
 	for _, repo := range gh.repos {
@@ -213,10 +223,15 @@ func (gh *GitHub) GetCommitsForRepoSince(repoName string, since time.Time) ([]Co
 	for {
 		url := fmt.Sprintf("%s/repos/%s/commits?page=%d&per_page=%d", githubAPIBaseURL, targetRepo.FullName, page, perPage)
 
-		// // Add since parameter if provided
-		// if !since.IsZero() {
-		// 	url += fmt.Sprintf("&since=%s", since.Format(time.RFC3339))
-		// }
+		// Add since parameter if provided
+		if !since.IsZero() {
+			url += fmt.Sprintf("&since=%s", since.Format(time.RFC3339))
+		}
+
+		// Add branch parameter if provided
+		if branchName != "" {
+			url += fmt.Sprintf("&sha=%s", branchName)
+		}
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -296,5 +311,106 @@ func (gh *GitHub) GetCommitsForRepoByDay(repoName string) ([]Commit, error) {
 	// Set time to start of the day
 	since = time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, since.Location())
 
-	return gh.GetCommitsForRepoSince(repoName, since)
+	return gh.GetCommitsFromAllBranches(repoName, since)
+}
+
+func (gh *GitHub) GetBranchesForRepo(repoName string) ([]Branch, error) {
+	// Find the repo by name
+	var targetRepo *Repo
+	for _, repo := range gh.repos {
+		if repo.Name == repoName {
+			targetRepo = &repo
+			break
+		}
+	}
+
+	if targetRepo == nil {
+		return nil, fmt.Errorf("repository %s not found", repoName)
+	}
+
+	allBranches := []Branch{}
+	page := 1
+	perPage := 100 // GitHub API max per page
+
+	for {
+		url := fmt.Sprintf("%s/repos/%s/branches?page=%d&per_page=%d", githubAPIBaseURL, targetRepo.FullName, page, perPage)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %v", err)
+		}
+
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", gh.user.apiKey))
+		req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
+		req.Header.Add("Accept", "application/vnd.github+json")
+
+		client := http.Client{Timeout: 15 * time.Second}
+
+		res, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to do request: %v", err)
+		}
+
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read data: %v", err)
+		}
+
+		var branches []Branch
+		if err := json.Unmarshal(body, &branches); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal data: %v", err)
+		}
+
+		// If no branches returned, we've reached the end
+		if len(branches) == 0 {
+			break
+		}
+
+		allBranches = append(allBranches, branches...)
+
+		// If we got fewer branches than per_page, we've reached the end
+		if len(branches) < perPage {
+			break
+		}
+
+		page++
+	}
+
+	return allBranches, nil
+}
+
+func (gh *GitHub) GetCommitsFromAllBranches(repoName string, since time.Time) ([]Commit, error) {
+	// First, get all branches
+	branches, err := gh.GetBranchesForRepo(repoName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get branches: %v", err)
+	}
+
+	allCommits := []Commit{}
+	commitMap := make(map[string]bool) // To track unique commits by SHA
+
+	// Get commits from each branch
+	for _, branch := range branches {
+		commits, err := gh.GetCommitsForRepoSinceFromBranch(repoName, since, branch.Name)
+		if err != nil {
+			// Log error but continue with other branches
+			fmt.Printf("Warning: failed to get commits from branch %s: %v\n", branch.Name, err)
+			continue
+		}
+
+		// Add unique commits
+		for _, commit := range commits {
+			if !commitMap[commit.SHA] {
+				commitMap[commit.SHA] = true
+				allCommits = append(allCommits, commit)
+			}
+		}
+	}
+
+	// Sort commits by date (newest first)
+	// Note: GitHub API already returns commits in chronological order (newest first)
+	// But we might want to re-sort since we're combining from multiple branches
+
+	return allCommits, nil
 }
