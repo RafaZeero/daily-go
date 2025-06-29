@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -23,9 +24,26 @@ type repoSelectionMsg struct {
 	err   error
 }
 
+type commitsMsg struct {
+	repoName string
+	commits  []github.Commit
+	err      error
+}
+
 func SelectedRepos(repos []string) tea.Cmd {
 	return func() tea.Msg {
 		return repoSelectionMsg{repos: repos}
+	}
+}
+
+func FetchCommits(gh *github.GitHub, repoName string) tea.Cmd {
+	return func() tea.Msg {
+		commits, err := gh.GetCommitsForRepoByDay(repoName)
+		return commitsMsg{
+			repoName: repoName,
+			commits:  commits,
+			err:      err,
+		}
 	}
 }
 
@@ -34,6 +52,7 @@ type Action int
 const (
 	ACTION__SHOW_ALL_REPOS Action = iota
 	ACTION__SHOW_SELECTED_REPOS
+	ACTION__SHOW_COMMITS
 )
 
 type model struct {
@@ -43,6 +62,9 @@ type model struct {
 	paginator    paginator.Model
 	repoSelected []string
 	action       Action
+	gh           *github.GitHub
+	commits      []github.Commit
+	repoName     string
 }
 
 func (m model) Init() tea.Cmd {
@@ -55,13 +77,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Is it a key press?
 	case tea.KeyMsg:
-		m.action = ACTION__SHOW_ALL_REPOS
 		// Cool, what was the actual key pressed?
 		switch msg.String() {
 
 		// These keys should exit the program.
 		case "ctrl+c", "q":
 			return m, tea.Quit
+
+		case "enter":
+			if m.action == ACTION__SHOW_SELECTED_REPOS {
+				// Fetch commits for the first selected repo
+				if len(m.repoSelected) > 0 {
+					// Extract repo name from the selected repo string
+					// Assuming the format is "[visibility] repoName - Created at: ..."
+					repoStr := m.repoSelected[0]
+					parts := strings.Split(repoStr, "  ")
+					if len(parts) >= 2 {
+						repoName := parts[1]
+						return m, FetchCommits(m.gh, repoName)
+					}
+				}
+			} else {
+				// Original behavior for selecting repos
+				m.action = ACTION__SHOW_ALL_REPOS
+				selected := []string{}
+
+				for s := range m.selected {
+					selected = append(selected, m.choices[s])
+					// fmt.Println(m.choices[s])
+				}
+				return m, SelectedRepos(selected)
+			}
 
 		// The "up" and "k" keys move the cursor up
 		case "up", "k":
@@ -103,22 +149,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.selected[offset+m.cursor] = struct{}{}
 			}
-
-		case "enter":
-			selected := []string{}
-
-			for s := range m.selected {
-				selected = append(selected, m.choices[s])
-				// fmt.Println(m.choices[s])
-			}
-			return m, SelectedRepos(selected)
-
 		}
 
 	case repoSelectionMsg:
 		m.action = ACTION__SHOW_SELECTED_REPOS
 		m.repoSelected = msg.repos // []str
 		// m.repoSelected = msg.name // str
+
+	case commitsMsg:
+		if msg.err != nil {
+			// Handle error - you might want to show an error message
+			return m, nil
+		}
+		m.action = ACTION__SHOW_COMMITS
+		m.commits = msg.commits
+		m.repoName = msg.repoName
 	}
 
 	// Return the updated model to the Bubble Tea runtime for processing.
@@ -171,6 +216,55 @@ func (m model) View() string {
 		}
 		selectedText.WriteString("\nPress enter to continue or q to quit.\n")
 		return selectedText.String()
+
+	case ACTION__SHOW_COMMITS:
+		var commitsText strings.Builder
+
+		// Determine which day(s) we're showing
+		now := time.Now()
+		weekday := now.Weekday()
+		var dayRange string
+
+		switch weekday {
+		case time.Monday:
+			dayRange = "Friday, Saturday, Sunday, and Monday"
+		case time.Tuesday:
+			dayRange = "Monday"
+		case time.Wednesday:
+			dayRange = "Tuesday"
+		case time.Thursday:
+			dayRange = "Wednesday"
+		case time.Friday:
+			dayRange = "Thursday"
+		case time.Saturday:
+			dayRange = "Friday"
+		case time.Sunday:
+			dayRange = "Saturday"
+		}
+
+		commitsText.WriteString(fmt.Sprintf("Commits for %s (%s):\n\n", m.repoName, dayRange))
+
+		if len(m.commits) == 0 {
+			commitsText.WriteString("No commits found for the specified day(s).\n")
+		} else {
+			for i, commit := range m.commits {
+				if i >= 20 { // Limit to first 20 commits for display
+					commitsText.WriteString(fmt.Sprintf("... and %d more commits\n", len(m.commits)-20))
+					break
+				}
+				message := commit.Commit.Message
+				if len(message) > 60 {
+					message = message[:57] + "..."
+				}
+				commitsText.WriteString(fmt.Sprintf("%s - %s (%s)\n",
+					commit.SHA[:8],
+					message,
+					commit.Commit.Author.Date.Format("2006-01-02 15:04")))
+			}
+		}
+
+		commitsText.WriteString("\nPress q to quit.\n")
+		return commitsText.String()
 	}
 
 	return ""
@@ -184,10 +278,24 @@ func main() {
 		Username: "RafaZeero",
 	})
 
-	// gh.LoadReposFromUser()
-	//
+	// repo := github.Repo{}
 	// for _, r := range gh.GetRepos() {
 	// 	fmt.Println(r)
+	// 	if r.Name == "contas-casa" {
+	// 		fmt.Println("found!!")
+	// 		repo = r
+	// 		break
+	// 	}
+	// }
+
+	// commits, err := gh.GetCommitsForRepo("contas-casa")
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+	//
+	// for _, c := range commits {
+	// 	fmt.Println(c)
 	// }
 
 	p := paginator.New()
@@ -201,6 +309,7 @@ func main() {
 		choices:   gh.GetReposChoices(),
 		selected:  make(map[int]struct{}),
 		paginator: p,
+		gh:        gh,
 	}
 
 	t := tea.NewProgram(m)
