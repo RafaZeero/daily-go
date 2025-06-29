@@ -1,128 +1,22 @@
 package main
 
 import (
-	"encoding/json"
+	"daily-go/github"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/joho/godotenv"
 
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	// "github.com/charmbracelet/lipgloss"
 )
 
 const (
 	githubAPIBaseURL = "https://api.github.com"
 	// geminiAPIURL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="
 )
-
-type Repo struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Private   bool      `json:"private"`
-	HTMLURL   string    `json:"html_url"`
-	URL       string    `json:"url"`
-	Language  string    `json:"language"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-func (r Repo) String() string {
-	return fmt.Sprintf("%s  - Created at: %s", r.Name, r.CreatedAt.String())
-}
-
-type user struct {
-	username string
-	apiKey   string
-}
-
-type GitHub struct {
-	user  user
-	repos []Repo
-}
-
-type GitHubOptions struct {
-	APIKey   string
-	Username string
-}
-
-func NewGithub(opts GitHubOptions) *GitHub {
-	if opts.APIKey == "" {
-		log.Fatal("authorization token should not be empty")
-	}
-
-	if opts.Username == "" {
-		log.Fatal("user should not be empty")
-	}
-
-	gh := &GitHub{
-		user: user{
-			username: opts.Username,
-			apiKey:   opts.APIKey,
-		},
-		repos: make([]Repo, 0),
-	}
-
-	gh.LoadReposFromUser()
-
-	return gh
-}
-
-// @TODO: Validate errors
-func (gh *GitHub) LoadReposFromUser() {
-	url := fmt.Sprintf("%s/users/%s/repos", githubAPIBaseURL, gh.user.username)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal("failed to create request")
-		return
-	}
-
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", gh.user.apiKey))
-	req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Add("Accept", "application/vnd.github+json")
-
-	client := http.Client{Timeout: 15 * time.Second}
-
-	res, err := client.Do(req)
-	if err != nil {
-		log.Fatal("failed to do request")
-		return
-	}
-
-	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Fatal("failed to read data")
-		return
-	}
-
-	var Repos []Repo
-	if err := json.Unmarshal(body, &Repos); err != nil {
-		log.Fatal("failed to unmarshal data")
-		return
-	}
-
-	gh.repos = append(gh.repos, Repos...)
-}
-
-func (gh *GitHub) GetRepos() []Repo {
-	return gh.repos
-}
-
-func (gh *GitHub) GetReposChoices() []string {
-	choices := []string{}
-	for _, r := range gh.GetRepos() {
-		choices = append(choices, fmt.Sprint(r))
-	}
-	return choices
-}
 
 type repoSelectionMsg struct {
 	repos []string
@@ -285,27 +179,33 @@ func (m model) View() string {
 func main() {
 	godotenv.Load()
 
-	gh := NewGithub(GitHubOptions{
+	gh := github.NewGithub(github.GitHubOptions{
 		APIKey:   os.Getenv("GITHUB_ACCESS_TOKEN"),
 		Username: "RafaZeero",
 	})
 
-	p := paginator.New()
-	p.Type = paginator.Dots
-	p.PerPage = 10
-	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
-	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
-	p.SetTotalPages(len(gh.GetReposChoices()))
+	gh.LoadReposFromUser()
 
-	m := model{
-		choices:   gh.GetReposChoices(),
-		selected:  make(map[int]struct{}),
-		paginator: p,
+	for _, r := range gh.GetRepos() {
+		fmt.Println(r)
 	}
 
-	t := tea.NewProgram(m)
-	if _, err := t.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
-	}
+	// p := paginator.New()
+	// p.Type = paginator.Dots
+	// p.PerPage = 10
+	// p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
+	// p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
+	// p.SetTotalPages(len(gh.GetReposChoices()))
+	//
+	// m := model{
+	// 	choices:   gh.GetReposChoices(),
+	// 	selected:  make(map[int]struct{}),
+	// 	paginator: p,
+	// }
+	//
+	// t := tea.NewProgram(m)
+	// if _, err := t.Run(); err != nil {
+	// 	fmt.Printf("Alas, there's been an error: %v", err)
+	// 	os.Exit(1)
+	// }
 }
