@@ -31,10 +31,8 @@ type Repo struct {
 type Commit struct {
 	SHA    string     `json:"sha"`
 	Commit CommitInfo `json:"commit"`
-	// Author    User       `json:"author"`
-	// Committer User       `json:"committer"`
-	// URL       string     `json:"url"`
-	// HTMLURL   string     `json:"html_url"`
+	Repo   string     `json:"repo"`
+	Branch string     `json:"branch"`
 }
 
 type CommitInfo struct {
@@ -75,7 +73,9 @@ func (c Commit) String() string {
 	if len(message) > 50 {
 		message = message[:47] + "..."
 	}
-	return fmt.Sprintf("%s - %s (%s)",
+	return fmt.Sprintf("%s/%s %s - %s (%s)",
+		c.Repo,
+		c.Branch,
 		c.SHA[:8],
 		message,
 		c.Commit.Author.Date.Format("2006-01-02 15:04"))
@@ -403,7 +403,12 @@ func (gh *GitHub) GetCommitsFromAllBranches(repoName string, since time.Time) ([
 		for _, commit := range commits {
 			if !commitMap[commit.SHA] {
 				commitMap[commit.SHA] = true
-				allCommits = append(allCommits, commit)
+				allCommits = append(allCommits, Commit{
+					SHA:    commit.SHA,
+					Commit: commit.Commit,
+					Repo:   repoName,
+					Branch: branch.Name,
+				})
 			}
 		}
 	}

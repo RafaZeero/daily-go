@@ -264,14 +264,7 @@ func (m model) View() string {
 					commitsText.WriteString(fmt.Sprintf("... and %d more commits\n", len(m.commits)-20))
 					break
 				}
-				message := commit.Commit.Message
-				if len(message) > 60 {
-					message = message[:57] + "..."
-				}
-				commitsText.WriteString(fmt.Sprintf("%s - %s (%s)\n",
-					commit.SHA[:8],
-					message,
-					commit.Commit.Author.Date.Format("2006-01-02 15:04")))
+				commitsText.WriteString(fmt.Sprintf("%s\n", commit.String()))
 			}
 		}
 
