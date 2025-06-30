@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"daily-go/github"
+	"daily-go/llm"
 	"fmt"
 	"os"
 	"strings"
@@ -292,26 +294,99 @@ func main() {
 	// 	}
 	// }
 
-	casinha_commits, err := gh.GetCommitsForRepoByDay("contas-casa")
-	if err != nil {
-		fmt.Println(err)
+	// use string.reader
+	reader := bufio.NewReader(os.Stdin)
+	var repoNames []string
+
+	fmt.Println("Enter repository names (press enter on empty line when done):")
+
+	for {
+		fmt.Print("Repo name: ")
+		repoName, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		repoName = strings.TrimSpace(repoName)
+
+		// If user presses enter on empty line, break the loop
+		if repoName == "" {
+			break
+		}
+
+		repoNames = append(repoNames, repoName)
+	}
+
+	if len(repoNames) == 0 {
+		fmt.Println("No repositories entered. Exiting.")
 		return
 	}
 
-	daily_go_commits, err := gh.GetCommitsForRepoByDay("daily-go")
-	if err != nil {
-		fmt.Println(err)
-		return
+	// Fetch commits for all entered repositories
+	allCommits := []github.Commit{}
+
+	for _, repoName := range repoNames {
+		fmt.Printf("Fetching commits for %s...\n", repoName)
+		commits, err := gh.GetCommitsForRepoByDay(repoName)
+		if err != nil {
+			fmt.Printf("Error fetching commits for %s: %v\n", repoName, err)
+			continue
+		}
+
+		allCommits = append(allCommits, commits...)
+		fmt.Printf("Found %d commits for %s\n", len(commits), repoName)
 	}
 
-	commits := []github.Commit{}
-
-	commits = append(commits, casinha_commits...)
-	commits = append(commits, daily_go_commits...)
-
-	for _, c := range commits {
+	// Display all commits
+	fmt.Printf("\nTotal commits found: %d\n\n", len(allCommits))
+	for _, c := range allCommits {
 		fmt.Println(c)
 	}
+
+	gemini := llm.NewGemini(llm.GeminiOptions{
+		APIKey: os.Getenv("GEMINI_API_KEY"),
+	})
+
+	summary, err := gemini.GenerateContent(
+		fmt.Sprintf(
+			`Resuma o seguinte commit com base na mensagem. 
+			Informe o tipo de alteração (bugfix, feature, etc.), o impacto no sistema e, se possível, o propósito. 
+			%s`,
+			allCommits,
+		),
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Create markdown file with current date
+	currentDate := time.Now().Format("2006-01-02")
+	filename := fmt.Sprintf("daily_go_%s.md", currentDate)
+
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("Error creating file %s: %v\n", filename, err)
+		return
+	}
+	defer file.Close()
+
+	// Write content to file
+	content := fmt.Sprintf("# Daily Go - %s\n\n", currentDate)
+	content += "## Repositories Analyzed\n"
+	for _, repoName := range repoNames {
+		content += fmt.Sprintf("- %s\n", repoName)
+	}
+	content += fmt.Sprintf("\n## Summary\n\n%s\n", summary)
+
+	_, err = file.WriteString(content)
+	if err != nil {
+		fmt.Printf("Error writing to file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\nSummary saved to %s\n", filename)
 
 	// p := paginator.New()
 	// p.Type = paginator.Dots
