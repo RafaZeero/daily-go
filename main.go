@@ -11,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -293,33 +292,44 @@ func main() {
 	// 	}
 	// }
 
-	// commits, err := gh.GetCommitsForRepo("contas-casa")
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
+	casinha_commits, err := gh.GetCommitsForRepoByDay("contas-casa")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	daily_go_commits, err := gh.GetCommitsForRepoByDay("daily-go")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commits := []github.Commit{}
+
+	commits = append(commits, casinha_commits...)
+	commits = append(commits, daily_go_commits...)
+
+	for _, c := range commits {
+		fmt.Println(c)
+	}
+
+	// p := paginator.New()
+	// p.Type = paginator.Dots
+	// p.PerPage = 10
+	// p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
+	// p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
+	// p.SetTotalPages(len(gh.GetReposChoices()))
+	//
+	// m := model{
+	// 	choices:   gh.GetReposChoices(),
+	// 	selected:  make(map[int]struct{}),
+	// 	paginator: p,
+	// 	gh:        gh,
 	// }
 	//
-	// for _, c := range commits {
-	// 	fmt.Println(c)
+	// t := tea.NewProgram(m)
+	// if _, err := t.Run(); err != nil {
+	// 	fmt.Printf("Alas, there's been an error: %v", err)
+	// 	os.Exit(1)
 	// }
-
-	p := paginator.New()
-	p.Type = paginator.Dots
-	p.PerPage = 10
-	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
-	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
-	p.SetTotalPages(len(gh.GetReposChoices()))
-
-	m := model{
-		choices:   gh.GetReposChoices(),
-		selected:  make(map[int]struct{}),
-		paginator: p,
-		gh:        gh,
-	}
-
-	t := tea.NewProgram(m)
-	if _, err := t.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
-	}
 }
