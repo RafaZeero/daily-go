@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -164,12 +163,12 @@ func (gh *GitHub) LoadReposFromUser() {
 		}
 
 		// Filter repos to only include those owned by the user
-		for _, repo := range repos {
-			owner := strings.Split(repo.FullName, "/")[0]
-			if owner == gh.user.username {
-				allRepos = append(allRepos, repo)
-			}
-		}
+		// for _, repo := range repos {
+		// 	owner := strings.Split(repo.FullName, "/")[0]
+		// 	if owner == gh.user.username {
+		allRepos = append(allRepos, repos...)
+		// 	}
+		// }
 
 		// If we got fewer repos than per_page, we've reached the end
 		if len(repos) < perPage {
